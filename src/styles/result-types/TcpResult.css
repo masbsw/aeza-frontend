@@ -1,0 +1,55 @@
+.tcp-results {
+  border-left-color: #1abc9c;
+}
+
+.tcp-table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #91a1b1;
+}
+
+.tcp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background-color: white;
+}
+
+.tcp-table th {
+  padding: 12px 15px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #2c3e50;
+}
+
+.tcp-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #f8f9fa;
+}
+
+.tcp-row:hover {
+  background: #f8f9fa;
+}
+
+.tcp-row:last-child td {
+  border-bottom: none;
+}
+
+.result-badge.connected {
+  background: #dafff173;
+  color: #153257;
+  padding: 8px 17px;
+  border-radius: 17px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid #153257;
+}
+
+.time-cell {
+  font-family: 'Courier New', monospace;
+  color: #495057;
+  font-weight: 500;
+}

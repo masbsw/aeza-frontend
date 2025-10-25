@@ -1,0 +1,81 @@
+.ping-results {
+  border-left-color: #1abc9c;
+}
+
+.ping-table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #91a1b1;
+}
+
+.ping-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background-color: white;
+}
+
+.ping-table th {
+  padding: 12px 15px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #2c3e50;
+  background-color: #f8f9fa;
+  vertical-align: middle;
+}
+
+.ping-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #e9ecef;
+  vertical-align: middle;
+}
+
+.ping-row:hover {
+  background: #f8f9fa;
+}
+
+.ping-row:last-child td {
+  border-bottom: none;
+}
+
+
+.country-code {
+  font-size: 1rem;
+
+}
+
+
+.location-cell{
+    margin-top: 13px;
+      display: flex;
+  align-items: center;
+}
+
+.result-badge.success {
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.rtt-cell {
+  font-family: 'Courier New', monospace;
+  color: #495057;
+  font-weight: 500;
+}
+
+.ip-cell {
+  font-family: 'Courier New', monospace;
+  color: #6c757d;
+}
+
+.result-badge.success {
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+}

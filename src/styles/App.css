@@ -1,0 +1,19 @@
+.app{
+  background: linear-gradient(rgba(43, 43, 43, 1), rgba(40, 38, 63, 1)) ;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+
+.app-main{
+    width: 100%;
+  max-width: 720px;
+  min-width: 600px;
+  min-height: 100vh;
+  border-radius: 12px;
+}
+

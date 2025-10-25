@@ -1,0 +1,52 @@
+.dns-results {
+  border-left-color: #9b59b6;
+}
+
+.dns-table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #91a1b1;
+}
+
+.dns-table {
+  background-color: white;
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 9px;
+  font-size: 0.9rem;
+}
+
+.dns-table th {
+  padding: 12px 15px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #2c3e50;
+}
+
+.dns-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #f8f9fa;
+}
+
+.dns-row:hover {
+  background: #f8f9fa;
+}
+
+.dns-row:last-child td {
+  border-bottom: none;
+}
+
+.result-cell {
+  font-family: 'Courier New', monospace;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.ttl-cell {
+  font-family: 'Courier New', monospace;
+  color: #6c757d;
+  font-weight: 500;
+}

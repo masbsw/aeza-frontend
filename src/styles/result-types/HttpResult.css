@@ -1,0 +1,81 @@
+.http-results {
+  border-left-color: #3498db;
+  
+}
+
+.http-table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #91a1b1;
+}
+
+.http-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background-color: white;
+}
+
+.http-table th {
+  padding: 12px 15px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #2c3e50;
+}
+
+.http-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #f8f9fa;
+}
+
+.http-row:hover {
+  background: #f8f9fa;
+}
+
+.http-row:last-child td {
+  border-bottom: none;
+}
+
+.location-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: #2c3e50;
+  min-width: 200px;
+}
+
+.location-flag {
+  font-size: 1.2rem;
+}
+
+.result-badge.ok {
+  background: #dafff173;
+  color: #153257;
+  padding: 8px 17px;
+  border-radius: 17px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid #153257;
+}
+
+.time-cell {
+  font-family: 'Courier New', monospace;
+  color: #495057;
+  font-weight: 500;
+}
+
+.code-cell {
+  font-family: 'Courier New', monospace;
+  color: #153257;
+  font-weight: 500;
+}
+
+.ip-cell {
+  font-family: 'Courier New', monospace;
+  color: #2c3e50;
+  font-weight: 500;
+}
