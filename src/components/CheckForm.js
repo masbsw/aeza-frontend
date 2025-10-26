@@ -145,7 +145,10 @@ const CheckForm = ({
                   key={button.type}
                   type="button"
                   onClick={() => handleCheckTypeClick(button.type)}
-                  disabled={isLoading || (currentTask && currentTask.status === 'running')}
+                  disabled={
+                    isLoading ||
+                    (currentTask && ['running', 'pending'].includes(currentTask.status))
+                  }
                   className="check-button"
                   data-type={button.type}
                 >
