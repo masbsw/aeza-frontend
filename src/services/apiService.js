@@ -1,6 +1,17 @@
 import { CONFIG } from '../constants/config';
-import { adaptFromCheckHost } from '../adapters/CheckHostAdapter';
 import { withBasicAuth } from '../utils/auth';
+import { adaptJobResults } from './resultAdapter';
+import { extractHost, extractPort } from '../validation';
+
+const CHECK_TYPE_MAP = {
+  http: 'HTTP',
+  ping: 'PING',
+  dns: 'DNS_LOOKUP',
+  tcp: 'TCP',
+  traceroute: 'TRACEROUTE'
+};
+
+const DEFAULT_TCP_PORT = 80;
 
 class ApiService {
   constructor() {
@@ -10,39 +21,39 @@ class ApiService {
 
   async submitCheck(target, checkType) {
     console.log(`Submitting ${checkType} check for ${target}`);
-    
+
     if (CONFIG.USE_MOCK) {
       console.log('Using mock data (backend not ready)');
       const mockApi = await import('../api/mockApi');
       return mockApi.default.submitCheck(target, checkType);
     } else {
-            try {
+      try {
+        const requestBody = this.buildSiteCheckRequest(target, checkType);
+
         const response = await fetch(`${this.baseURL}/checks`, {
           method: 'POST',
           headers: withBasicAuth({
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           }),
-          body: JSON.stringify({
-            target: target,
-            checkType: checkType
-          })
+          body: JSON.stringify(requestBody)
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log('backend response:', data);
-        
+
         return {
           taskId: data.jobId || data.id || data.taskId,
-          target: data.target,
-          status: data.status?.toLowerCase() || 'running',
+          jobId: data.jobId || data.id || data.taskId,
+          target: requestBody.target || target,
+          status: (data.status || 'IN_PROGRESS').toLowerCase(),
           checkType: checkType
         };
-        
+
       } catch (error) {
         console.error(' Backend error, using mock data:', error);
         const mockApi = await import('../api/mockApi');
@@ -56,26 +67,28 @@ class ApiService {
       const mockApi = await import('../api/mockApi');
       return mockApi.default.getTaskStatus(taskId, checkType);
     } else {
-try {
+      try {
         const response = await fetch(`${this.baseURL}/checks/${taskId}`, {
           headers: withBasicAuth({
             'Accept': 'application/json'
           })
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log('Real task status:', data);
-        
+
+        const derivedTarget = data.target || data?.siteCheck?.target || data?.siteCheckResponse?.target;
+
         return {
-          status: data.status?.toLowerCase() || 'completed',
-          progress: data.progress || 100,
-          results: data.result ? adaptFromCheckHost(data.result, checkType, data.target) : null
+          status: (data.status || data.jobStatus || 'COMPLETED').toLowerCase(),
+          progress: this.deriveProgress(data),
+          results: adaptJobResults(data, checkType, derivedTarget)
         };
-        
+
       } catch (error) {
         console.error('Backend error, using mock data:', error);
         const mockApi = await import('../api/mockApi');
@@ -160,8 +173,61 @@ try {
         }
       ]);
     }
-    
+
     return [];
+  }
+
+  buildSiteCheckRequest(target, checkType) {
+    const mappedType = this.mapCheckType(checkType);
+    const host = extractHost(target) || target;
+    const request = {
+      target: host
+    };
+
+    if (mappedType) {
+      request.checkTypes = [mappedType];
+    }
+
+    if (checkType === 'tcp') {
+      const port = extractPort(target) || DEFAULT_TCP_PORT;
+      request.tcpConfig = {
+        port
+      };
+    } else if (checkType === 'http') {
+      const port = extractPort(target);
+      if (port) {
+        request.httpConfig = { port };
+      }
+    }
+
+    return request;
+  }
+
+  mapCheckType(checkType) {
+    if (!checkType) {
+      return null;
+    }
+
+    const normalized = checkType.toLowerCase();
+    return CHECK_TYPE_MAP[normalized] || normalized.toUpperCase();
+  }
+
+  deriveProgress(jobResponse) {
+    if (typeof jobResponse.progress === 'number') {
+      return jobResponse.progress;
+    }
+
+    const status = jobResponse.status ? jobResponse.status.toString().toUpperCase() : null;
+
+    if (status === 'COMPLETED' || status === 'FAILED' || status === 'TIMEOUT') {
+      return 100;
+    }
+
+    if (jobResponse.data && typeof jobResponse.data.progress === 'number') {
+      return jobResponse.data.progress;
+    }
+
+    return 0;
   }
 }
 

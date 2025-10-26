@@ -1,0 +1,47 @@
+.job-logs {
+  margin-top: 16px;
+  padding: 16px;
+  background: #1f2229;
+  border-radius: 12px;
+  color: #ffffff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+.job-logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.job-log-entry {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.job-log-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.job-log-agent {
+  font-weight: 600;
+  color: #8ab4f8;
+}
+
+.job-log-timestamp {
+  font-family: 'Fira Mono', monospace;
+}
+
+.job-log-body {
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.85);
+  word-break: break-word;
+}

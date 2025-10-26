@@ -5,8 +5,9 @@ import DnsResults from './result-types/DnsResult';
 import TcpResults from './result-types/TcpResult';
 import '../styles/Results.css';
 import AgentMetrics from './AgentMetrics';
+import JobLogs from './JobLogs';
 
-const Results = ({ taskId, status, progress, results, url, checkType,  agentMetrics}) => {
+const Results = ({ taskId, status, progress, results, url, checkType, agentMetrics, jobLogs }) => {
   // if (!taskId) return null;
 
   const renderResults = () => {
@@ -30,26 +31,13 @@ const Results = ({ taskId, status, progress, results, url, checkType,  agentMetr
     }
   };
 
-  const getCheckTypeName = (type) => {
-    const names = {
-      ping: 'Ping',
-      http: 'HTTP(S)',
-      dns: 'DNS Lookup', 
-      traceroute: 'Traceroute',
-      tcp: 'TCP Port',
-      info: 'Location Info'
-    };
-    return names[type] || type;
-  };
-
   return (
     <div className="results">
       <div className={`task-header ${status === 'completed' ? 'hidden' : ''}`}>
         <div className="task-info-left">
           <div className="task-meta">
             <span className={`status ${status}`}>
-              {status === 'running' ? 'Выполняется...' : 
-               status === 'completed' ? 'Завершено'  : 'Ошибка'}
+              {getStatusLabel(status)}
             </span>
           </div>
         </div>
@@ -62,8 +50,29 @@ const Results = ({ taskId, status, progress, results, url, checkType,  agentMetr
       {status === 'completed' && agentMetrics && agentMetrics.length > 0 && (
         <AgentMetrics metrics={agentMetrics} />
       )}
+
+      {jobLogs && jobLogs.length > 0 && (
+        <JobLogs logs={jobLogs} />
+      )}
     </div>
   );
+};
+
+const getStatusLabel = (status) => {
+  switch (status) {
+    case 'pending':
+      return 'Ожидает запуска';
+    case 'running':
+      return 'Выполняется...';
+    case 'completed':
+      return 'Завершено';
+    case 'failed':
+      return 'Ошибка';
+    case 'timeout':
+      return 'Тайм-аут';
+    default:
+      return status || '';
+  }
 };
 
 export default Results;
