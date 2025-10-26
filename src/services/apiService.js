@@ -1,4 +1,3 @@
-// services/apiService.js
 import { CONFIG } from '../constants/config';
 import { adaptFromCheckHost } from '../adapters/CheckHostAdapter';
 import { withBasicAuth } from '../utils/auth';

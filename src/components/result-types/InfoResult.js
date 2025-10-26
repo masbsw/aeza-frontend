@@ -27,7 +27,15 @@ const InfoResults = ({ info, url }) => {
 const InfoSection = ({ source, data, isFirst }) => {
   const hasCoordinates = source.latitude && source.longitude;
   
-  const getSourceData = (sourceName) => {
+  const getSourceData = (sourceName,source) => {
+
+    if (source.name === 'IPGeolocation.io') {
+    return {
+      ipRange: source.ipRange || 'Unknown',
+      city: source.city || 'Unknown',
+      postalCode: source.postalCode || ''
+    };
+  }
     const sources = {
       'DB-IP': {
         ipRange: '158.160.0.0-158.160.255.255 CIDR',
@@ -59,7 +67,7 @@ const InfoSection = ({ source, data, isFirst }) => {
     return sources[sourceName] || sources['DB-IP'];
   };
 
-  const sourceData = getSourceData(source.name);
+  const sourceData = getSourceData(source.name, source);
 
   return (
     <div className="info-section">

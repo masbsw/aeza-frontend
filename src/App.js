@@ -5,8 +5,11 @@ import { apiService } from './services/apiService';
 import { CONFIG } from './constants/config';
 import './styles/App.css';
 import AuthTester from './components/AuthTester';
+import { ipGeolocationService } from './services/ipGeolocationService';
+import { extractIPFromUrl } from './utils/ipUtils';
 
 function App() {
+  
   const [currentTask, setCurrentTask] = useState(null);
   const [loading, setLoading] = useState(false);
   const [targetUrl, setTargetUrl] = useState('');
@@ -97,32 +100,71 @@ function App() {
     }
   };
 
-  const startInfoCheck = async (checkType) => {
-    const loadingTask = {
-      taskId: `info-loading-${Date.now()}`,
-      url: targetUrl,
-      checkType: 'info',
-      status: 'running',
-      progress: 50,
-      results: null,
-      timestamp: new Date().toLocaleTimeString()
-    };
-    
-    setCurrentTask(loadingTask);
-    
-    setTimeout(() => {
-      const completedTask = {
-        ...loadingTask,
-        status: 'completed',
-        progress: 100,
-        results: { 
-          info: getExtendedMockInfoData(targetUrl)
-        }
-      };
-      setCurrentTask(completedTask);
-      loadAgentMetrics();
-    }, 2000);
+const formatRealInfoData = (realData, targetUrl) => {
+  return {
+    ...realData,
+    hostname: targetUrl.replace(/^https?:\/\//, ''),
+    sources: [
+      {
+        name: 'IPGeolocation.io',
+        date: realData.date || new Date().toLocaleDateString('en-GB'),
+        ipRange: realData.ipRange || 'Unknown',
+        city: realData.city || 'Unknown',
+        postalCode: realData.postalCode || '',
+        accuracy: 'High',
+        latitude: realData.latitude,
+        longitude: realData.longitude,
+        currency: realData.currency,
+        languages: realData.languages,
+        organization: realData.organization
+      }
+    ]
   };
+};
+
+const startInfoCheck = async (checkType) => {
+  const loadingTask = {
+    taskId: `info-loading-${Date.now()}`,
+    url: targetUrl,
+    checkType: 'info',
+    status: 'running',
+    progress: 50,
+    results: null,
+    timestamp: new Date().toLocaleTimeString()
+  };
+  
+  setCurrentTask(loadingTask);
+  
+  try {
+    const ip = await extractIPFromUrl(targetUrl);
+    
+    const realData = await ipGeolocationService.fetchFromIPGeolocation(ip);
+    
+    const completedTask = {
+      ...loadingTask,
+      status: 'completed',
+      progress: 100,
+      results: { 
+        info: formatRealInfoData(realData, targetUrl)
+      }
+    };
+    setCurrentTask(completedTask);
+    
+  } catch (error) {
+    console.error('Real geolocation failed, using mock:', error);
+    const completedTask = {
+      ...loadingTask,
+      status: 'completed', 
+      progress: 100,
+      results: { 
+        info: getExtendedMockInfoData(targetUrl)
+      }
+    };
+    setCurrentTask(completedTask);
+  }
+  
+  loadAgentMetrics();
+};
 
   const handleUrlSubmit = async (url) => {
     setLoading(true);
