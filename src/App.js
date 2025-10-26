@@ -1,23 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CheckForm from './components/CheckForm';
 import Results from './components/Results';
 import { apiService } from './services/apiService';
+import { webSocketService } from './services/websocketService';
 import { CONFIG } from './constants/config';
 import './styles/App.css';
-import AuthTester from './components/AuthTester';
-import { ipGeolocationService } from './services/ipGeolocationService';
-import { extractIPFromUrl } from './utils/ipUtils';
 
 function App() {
-  
   const [currentTask, setCurrentTask] = useState(null);
   const [loading, setLoading] = useState(false);
   const [targetUrl, setTargetUrl] = useState('');
   const [urlSubmitted, setUrlSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [agentMetrics, setAgentMetrics] = useState([]);
+  const [backendAvailable, setBackendAvailable] = useState(false);
   
   const currentTaskRef = useRef();
+  const jobIdRef = useRef();
 
   useEffect(() => {
     console.log('DEBUG Current Task:', currentTask);
@@ -31,12 +30,42 @@ function App() {
     currentTaskRef.current = currentTask;
   }, [currentTask]);
 
+  useEffect(() => {
+    const checkBackendConnection = async () => {
+      console.log('Checking backend connection...');
+
+      try {
+        const health = await apiService.healthCheck();
+        if (!health) {
+          throw new Error('Backend health check failed');
+        }
+
+        await apiService.getAgentMetrics();
+        
+        setBackendAvailable(true);
+        console.log('Backend is fully operational');
+
+        webSocketService.connectStomp(
+          () => console.log('WebSocket connected'),
+          (error) => console.warn('WebSocket connection warning:', error)
+        );
+
+      } catch (error) {
+        setBackendAvailable(false);
+        console.warn('Backend not available, using mock data:', error.message);
+      }
+    };
+
+    checkBackendConnection();
+  }, []);
+
   const loadAgentMetrics = async () => {
     try {
       const metrics = await apiService.getAgentMetrics();
       setAgentMetrics(metrics);
     } catch (error) {
-      console.error('Error loading agent metrics:', error);
+      console.log('Using mock agent metrics');
+      setAgentMetrics(getMockAgentMetrics());
     }
   };
 
@@ -46,125 +75,143 @@ function App() {
     setError('');
 
     try {
-      if (checkType === 'info') {
-        await startInfoCheck(checkType);
+      if (backendAvailable) {
+        console.log('Using real backend');
+        await startBackendCheck(checkType);
       } else {
-        await startNetworkCheck(checkType);
+        console.log('Using mock data');
+        await startMockCheck(checkType);
       }
     } catch (error) {
-      console.error('Error starting check:', error);
-      setError(`Ошибка при запуске проверки: ${error.message}`);
+      console.error('Error in check:', error);
+      await startMockCheck(checkType);
     } finally {
       setLoading(false);
     }
   };
 
-  const startNetworkCheck = async (checkType) => {
+  const startBackendCheck = async (checkType) => {
     try {
-      const task = await apiService.submitCheck(targetUrl, checkType);
+      const checkTypes = mapCheckTypeToBackend(checkType);
+      const task = await apiService.submitCheck(targetUrl, checkTypes);
       
-      console.log('Task created:', task);
-      
-      setCurrentTask({
-        taskId: task.taskId,
+      console.log('Backend task created:', task);
+      jobIdRef.current = task.jobId;
+
+      const loadingTask = {
+        taskId: task.jobId,
         url: targetUrl,
         checkType: checkType,
         status: 'running',
-        progress: 50,
+        progress: 20,
         results: null,
         timestamp: new Date().toLocaleTimeString()
-      });
+      };
+      
+      setCurrentTask(loadingTask);
 
-      setTimeout(async () => {
-        try {
-          const status = await apiService.getTaskStatus(task.taskId, checkType);
-          
-          setCurrentTask(prev => ({
-            ...prev,
-            status: 'completed',
-            progress: 100,
-            results: status.results
-          }));
-
-          const metrics = await apiService.getAgentMetrics();
-          setAgentMetrics(metrics);
-          
-        } catch (error) {
-          console.error('Error:', error);
-        }
-      }, 2000);
+      if (webSocketService.isConnected()) {
+        webSocketService.subscribeToJob(task.jobId, handleWebSocketMessage);
+      }
 
     } catch (error) {
-      console.error('Error starting check:', error);
-      setError('Ошибка при запуске проверки');
+      console.error('Backend check failed, falling back to mock:', error);
+      throw error;
     }
   };
 
-const formatRealInfoData = (realData, targetUrl) => {
-  return {
-    ...realData,
-    hostname: targetUrl.replace(/^https?:\/\//, ''),
-    sources: [
-      {
-        name: 'IPGeolocation.io',
-        date: realData.date || new Date().toLocaleDateString('en-GB'),
-        ipRange: realData.ipRange || 'Unknown',
-        city: realData.city || 'Unknown',
-        postalCode: realData.postalCode || '',
-        accuracy: 'High',
-        latitude: realData.latitude,
-        longitude: realData.longitude,
-        currency: realData.currency,
-        languages: realData.languages,
-        organization: realData.organization
-      }
-    ]
-  };
-};
+  const startMockCheck = async (checkType) => {
+    console.log('Using mock data for:', checkType);
+    
+    const loadingTask = {
+      taskId: `mock-${Date.now()}`,
+      url: targetUrl,
+      checkType: checkType,
+      status: 'running',
+      progress: 50,
+      results: null,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    
+    setCurrentTask(loadingTask);
 
-const startInfoCheck = async (checkType) => {
-  const loadingTask = {
-    taskId: `info-loading-${Date.now()}`,
-    url: targetUrl,
-    checkType: 'info',
-    status: 'running',
-    progress: 50,
-    results: null,
-    timestamp: new Date().toLocaleTimeString()
+    setTimeout(() => {
+      const completedTask = {
+        ...loadingTask,
+        status: 'completed',
+        progress: 100,
+        results: getMockResults(checkType, targetUrl)
+      };
+      setCurrentTask(completedTask);
+      setAgentMetrics(getMockAgentMetrics());
+    }, 1500);
   };
-  
-  setCurrentTask(loadingTask);
-  
-  try {
-    const ip = await extractIPFromUrl(targetUrl);
-    
-    const realData = await ipGeolocationService.fetchFromIPGeolocation(ip);
-    
-    const completedTask = {
-      ...loadingTask,
-      status: 'completed',
-      progress: 100,
-      results: { 
-        info: formatRealInfoData(realData, targetUrl)
-      }
+
+  const mapCheckTypeToBackend = (checkType) => {
+    const typeMap = {
+      'info': ['HTTP', 'DNS_LOOKUP'],
+      'ping': ['PING'],
+      'http': ['HTTP'],
+      'dns': ['DNS_LOOKUP'],
+      'tcp': ['TCP']
     };
-    setCurrentTask(completedTask);
     
-  } catch (error) {
-    console.error('Real geolocation failed, using mock:', error);
-    const completedTask = {
-      ...loadingTask,
-      status: 'completed', 
-      progress: 100,
-      results: { 
-        info: getExtendedMockInfoData(targetUrl)
+    return typeMap[checkType] || ['HTTP'];
+  };
+
+  const handleWebSocketMessage = useCallback((payload) => {
+    console.log('WebSocket message received:', payload);
+    
+    setCurrentTask(prev => {
+      if (!prev) return prev;
+
+      const update = { ...prev };
+      
+      switch (payload.type) {
+        case 'JOB_CREATED':
+          update.status = 'pending';
+          update.progress = 30;
+          break;
+          
+        case 'JOB_UPDATED':
+          update.status = payload.status.toLowerCase();
+          update.progress = getProgressFromStatus(payload.status);
+          break;
+          
+        case 'JOB_COMPLETED':
+          update.status = 'completed';
+          update.progress = 100;
+          update.results = payload.data?.result || payload.data;
+          update.completedAt = new Date().toLocaleTimeString();
+          break;
+          
+        default:
+          break;
       }
+      
+      return update;
+    });
+
+    if (payload.type === 'JOB_COMPLETED' || payload.status === 'FAILED') {
+      setTimeout(() => {
+        if (jobIdRef.current) {
+          webSocketService.unsubscribeFromJob(jobIdRef.current);
+          jobIdRef.current = null;
+        }
+      }, 3000);
+    }
+  }, []);
+
+  const getProgressFromStatus = (status) => {
+    const progressMap = {
+      'PENDING': 30,
+      'IN_PROGRESS': 60,
+      'COMPLETED': 100,
+      'FAILED': 100
     };
-    setCurrentTask(completedTask);
-  }
-  
-  loadAgentMetrics();
-};
+    
+    return progressMap[status] || 40;
+  };
 
   const handleUrlSubmit = async (url) => {
     setLoading(true);
@@ -186,6 +233,11 @@ const startInfoCheck = async (checkType) => {
     setCurrentTask(null);
     setError('');
     setAgentMetrics([]);
+    
+    if (jobIdRef.current) {
+      webSocketService.unsubscribeFromJob(jobIdRef.current);
+      jobIdRef.current = null;
+    }
   };
 
   return (
@@ -216,36 +268,105 @@ const startInfoCheck = async (checkType) => {
   );
 }
 
-const getExtendedMockInfoData = (targetUrl) => {
-  return {
-    ip: '158.160.46.143',
-    hostname: targetUrl.replace(/^https?:\/\//, ''),
-    country: 'Russia',
-    countryCode: 'RU',
-    region: 'Moscow',
-    city: 'Moscow',
-    postalCode: '101000',
-    latitude: 55.7558,
-    longitude: 37.6173,
-    timezone: 'Europe/Moscow',
-    localTime: new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }),
-    asn: 'AS200350',
-    isp: 'Yandex Cloud LLC',
-    organization: 'Yandex.Cloud',
-    currency: 'RUB',
-    languages: 'ru, en',
-    continent: 'Europe',
-    sources: [
-      {
-        name: 'IPGeolocation.io',
-        date: new Date().toLocaleDateString('en-GB'),
-        ipRange: '158.160.0.0-158.160.255.255 CIDR',
-        city: 'Moscow',
-        postalCode: '101000',
-        accuracy: 'High'
+const getMockResults = (checkType, targetUrl) => {
+  const hostname = targetUrl.replace(/^https?:\/\//, '').split('/')[0];
+  
+  const mockData = {
+    info: {
+      ip: '93.184.216.34',
+      hostname: hostname,
+      country: 'United States',
+      countryCode: 'US',
+      region: 'Massachusetts',
+      city: 'Boston',
+      postalCode: '02101',
+      latitude: 42.3584,
+      longitude: -71.0598,
+      timezone: 'America/New_York',
+      localTime: new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }),
+      asn: 'AS15133',
+      isp: 'Google LLC',
+      organization: 'Google Cloud',
+      currency: 'USD',
+      languages: 'en',
+      continent: 'North America',
+      sources: [
+        {
+          name: 'IPGeolocation.io',
+          date: new Date().toLocaleDateString('en-GB'),
+          ipRange: '93.184.216.0-93.184.216.255 CIDR',
+          city: 'Boston',
+          postalCode: '02101',
+          accuracy: 'High'
+        }
+      ]
+    },
+    ping: {
+      target: hostname,
+      packetsTransmitted: 4,
+      packetsReceived: 4,
+      packetLoss: 0,
+      min: 12.5,
+      avg: 15.2,
+      max: 18.7,
+      stddev: 2.1
+    },
+    http: {
+      url: targetUrl,
+      statusCode: 200,
+      statusMessage: 'OK',
+      responseTime: 245,
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'server': 'nginx',
+        'x-powered-by': 'Express'
+      },
+      ssl: {
+        valid: true,
+        expires: '2024-12-31T23:59:59.000Z'
       }
-    ]
+    },
+    dns: {
+      hostname: hostname,
+      records: {
+        A: ['93.184.216.34'],
+        AAAA: ['2606:2800:220:1:248:1893:25c8:1946'],
+        NS: ['ns1.example.com', 'ns2.example.com'],
+        MX: ['10 mail.example.com']
+      },
+      queryTime: 45
+    },
+    tcp: {
+      host: hostname,
+      port: 80,
+      status: 'open',
+      responseTime: 12.3,
+      service: 'http'
+    }
   };
+
+  return { [checkType]: mockData[checkType] || mockData.info };
+};
+
+const getMockAgentMetrics = () => {
+  return [
+    {
+      id: 'agent-1',
+      name: 'US East Agent',
+      status: 'online',
+      location: 'New York, US',
+      checksCompleted: 1245,
+      avgResponseTime: 45.2
+    },
+    {
+      id: 'agent-2', 
+      name: 'EU Central Agent',
+      status: 'online',
+      location: 'Frankfurt, DE',
+      checksCompleted: 987,
+      avgResponseTime: 32.1
+    }
+  ];
 };
 
 export default App;

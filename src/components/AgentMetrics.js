@@ -1,67 +1,94 @@
-import "../styles/AgentMetrics.css"
+import React from 'react';
+import '../styles/AgentMetrics.css';
 
-const AgentMetrics = ({ metrics }) => {
-  if (!metrics || metrics.length === 0) return null;
+const AgentMetrics = ({ agentMetrics = [] }) => {
+  if (!agentMetrics || agentMetrics.length === 0) {
+    return (
+      <div className="agent-metrics">
+        <div className="metrics-header">
+          <h4>Agent Metrics</h4>
+        </div>
+        <div className="no-metrics">
+          No agent metrics available
+        </div>
+      </div>
+    );
+  }
 
-  const metricsByAgent = metrics.reduce((acc, metric) => {
-    if (!acc[metric.agentName]) {
-      acc[metric.agentName] = [];
-    }
-    acc[metric.agentName].push(metric);
-    return acc;
-  }, {});
-
-  const getMetricIcon = (type) => {
-    switch(type) {
-      case 'AGENT_AVAILABILITY': return '';
-      case 'REQUEST_COUNT': return '';
-      case 'RESPONSE_DELAY': return '';
-      default: return '';
+  const getStatusIcon = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'online':
+        return '🟢';
+      case 'offline':
+        return '🔴';
+      case 'warning':
+        return '🟡';
+      default:
+        return '⚪';
     }
   };
 
-  const formatValue = (metric) => {
-    switch(metric.metricType) {
-      case 'AGENT_AVAILABILITY':
-        return `${metric.value.toFixed(1)}%`;
-      case 'REQUEST_COUNT':
-        return Math.floor(metric.value).toLocaleString();
-      case 'RESPONSE_DELAY':
-        return `${metric.value.toFixed(1)} ms`;
-      default:
-        return metric.value;
-    }
+  const formatNumber = (num) => {
+    if (typeof num !== 'number') return '0';
+    return num.toLocaleString();
+  };
+
+  const formatResponseTime = (time) => {
+    if (typeof time !== 'number') return 'N/A';
+    return `${time.toFixed(1)} ms`;
   };
 
   return (
     <div className="agent-metrics">
       <div className="metrics-header">
         <h4>Agent Metrics</h4>
-        <span className="realtime-badge">Real-time</span>
+        <span className="agents-count">{agentMetrics.length} agents</span>
       </div>
-      
+
       <div className="metrics-grid">
-        {Object.entries(metricsByAgent).map(([agentName, agentMetrics]) => (
-          <div key={agentName} className="agent-card">
+        {agentMetrics.map((agent, index) => (
+          <div key={agent.id || index} className="metric-card">
             <div className="agent-header">
-              <span className="agent-name">{agentName}</span>
-              <span className="agent-status">Online</span>
+              <span className="agent-status">
+                {getStatusIcon(agent.status)}
+              </span>
+              <span className="agent-name">
+                {agent.name || `Agent ${index + 1}`}
+              </span>
             </div>
-            
-            <div className="agent-metrics-list">
-              {agentMetrics.map((metric, index) => (
-                <div key={index} className="metric-item">
-                  <span className="metric-icon">
-                    {getMetricIcon(metric.metricType)}
-                  </span>
-                  <span className="metric-label">
-                    {metric.metricType.replace('_', ' ').toLowerCase()}
-                  </span>
-                  <span className="metric-value">
-                    {formatValue(metric)}
+
+            <div className="agent-details">
+              <div className="detail-row">
+                <span className="detail-label">Location:</span>
+                <span className="detail-value">
+                  {agent.location || 'Unknown'}
+                </span>
+              </div>
+
+              <div className="detail-row">
+                <span className="detail-label">Status:</span>
+                <span className="detail-value">
+                  {agent.status || 'unknown'}
+                </span>
+              </div>
+
+              {agent.checksCompleted !== undefined && (
+                <div className="detail-row">
+                  <span className="detail-label">Checks:</span>
+                  <span className="detail-value">
+                    {formatNumber(agent.checksCompleted)}
                   </span>
                 </div>
-              ))}
+              )}
+
+              {agent.avgResponseTime !== undefined && (
+                <div className="detail-row">
+                  <span className="detail-label">Avg Response:</span>
+                  <span className="detail-value">
+                    {formatResponseTime(agent.avgResponseTime)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ))}

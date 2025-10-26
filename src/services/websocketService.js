@@ -1,70 +1,107 @@
-import { CONFIG } from '../constants/config';
-import { mockWebSocketService } from './mockWebSocketService';
-import { withWebSocketCredentials } from '../utils/auth';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
+import { getAdminAuthorizationHeader } from '../utils/auth';
 
 class WebSocketService {
   constructor() {
+    this.stompClient = null;
     this.socket = null;
     this.subscriptions = new Map();
   }
 
-  async connect(jobId, checkType, targetUrl) {
-    console.log('🌐 WebSocket connection attempt...');
+  connectStomp(onConnect, onError) {
+    const socketUrl = `${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/ws`;
     
-    if (CONFIG.USE_MOCK) {
-      console.log('🔧 Using mock WebSocket');
-      return mockWebSocketService.connect(jobId, checkType, targetUrl);
-    } else {
-      console.log('🚀 Connecting to real WebSocket:', CONFIG.WS_URL);
-      return this.connectToRealBackend(jobId);
+    this.socket = new SockJS(socketUrl);
+    
+    this.stompClient = new Client({
+      webSocketFactory: () => this.socket,
+      reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+      
+      connectHeaders: this.getWebSocketAuthHeaders(),
+      
+      onConnect: (frame) => {
+        console.log('STOMP Connected:', frame);
+        onConnect && onConnect(frame);
+      },
+      
+      onStompError: (frame) => {
+        console.error('STOMP Error:', frame);
+        onError && onError(frame);
+      },
+      
+      onWebSocketError: (error) => {
+        console.error('WebSocket Error:', error);
+        onError && onError(error);
+      },
+      
+      onDisconnect: () => {
+        console.log('STOMP Disconnected');
+      }
+    });
+
+    this.stompClient.activate();
+  }
+
+  getWebSocketAuthHeaders() {
+    const authHeader = getAdminAuthorizationHeader();
+    if (!authHeader) {
+      console.warn('No admin authorization header available for WebSocket');
+      return {};
+    }
+
+    return {
+      'Authorization': authHeader
+    };
+  }
+
+  subscribeToJob(jobId, callback) {
+    if (!this.stompClient || !this.stompClient.connected) {
+      console.error('STOMP client not connected');
+      return null;
+    }
+
+    const subscription = this.stompClient.subscribe(
+      `/topic/jobs/${jobId}`,
+      (message) => {
+        try {
+          const payload = JSON.parse(message.body);
+          console.log('WebSocket message:', payload);
+          callback(payload);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      }
+    );
+
+    this.subscriptions.set(jobId, subscription);
+    return subscription;
+  }
+
+  unsubscribeFromJob(jobId) {
+    const subscription = this.subscriptions.get(jobId);
+    if (subscription) {
+      subscription.unsubscribe();
+      this.subscriptions.delete(jobId);
     }
   }
 
-  async connectToRealBackend(jobId) {
-    return new Promise((resolve, reject) => {
-      try {
-        const wsUrl = this.buildSocketUrl(jobId);
-        console.log('🚀 Connecting to real WebSocket:', wsUrl);
-        const authorizedUrl = withWebSocketCredentials(wsUrl);
-        this.socket = new WebSocket(authorizedUrl);
-        
-        this.socket.onopen = () => {
-          console.log('WebSocket connected to real backend');
-          this.isConnected = true;
-          resolve();
-        };
-        
-        this.socket.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log('Real WebSocket message:', data);
-            this.handleRealMessage(data);
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-          }
-        };
-        
-        this.socket.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          reject(error);
-        };
-        
-        this.socket.onclose = (event) => {
-          console.log('WebSocket closed:', event.code, event.reason);
-          this.isConnected = false;
-        };
-        
-      } catch (error) {
-        console.error('WebSocket connection failed:', error);
-        reject(error);
-      }
+  disconnect() {
+    this.subscriptions.forEach((subscription, jobId) => {
+      subscription.unsubscribe();
     });
+    this.subscriptions.clear();
+
+    if (this.stompClient) {
+      this.stompClient.deactivate();
+    }
   }
 
-  buildSocketUrl(jobId) {
-    const baseUrl = CONFIG.WS_URL.endsWith('/') ? CONFIG.WS_URL.slice(0, -1) : CONFIG.WS_URL;
-    return `${baseUrl}/${jobId}`;
+  isConnected() {
+    return this.stompClient && this.stompClient.connected;
   }
 }
 
-export const websocketService = new WebSocketService();
+export const webSocketService = new WebSocketService();
