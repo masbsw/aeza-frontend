@@ -10,17 +10,21 @@ class WebSocketService {
   }
 
   connectStomp(onConnect, onError) {
-    const socketUrl = `${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/ws`;
-    
-    this.socket = new SockJS(socketUrl);
-    
+    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+    const socketUrl = `${baseUrl.replace(/\/$/, '')}/ws`;
+    const authHeader = getAdminAuthorizationHeader();
+
+    const sockJsOptions = this.buildSockJsOptions(authHeader);
+
+    this.socket = new SockJS(socketUrl, null, sockJsOptions);
+
     this.stompClient = new Client({
       webSocketFactory: () => this.socket,
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
-      
-      connectHeaders: this.getWebSocketAuthHeaders(),
+
+      connectHeaders: this.getWebSocketAuthHeaders(authHeader),
       
       onConnect: (frame) => {
         console.log('STOMP Connected:', frame);
@@ -45,15 +49,34 @@ class WebSocketService {
     this.stompClient.activate();
   }
 
-  getWebSocketAuthHeaders() {
-    const authHeader = getAdminAuthorizationHeader();
+  getWebSocketAuthHeaders(authHeader = getAdminAuthorizationHeader()) {
     if (!authHeader) {
       console.warn('No admin authorization header available for WebSocket');
       return {};
     }
 
     return {
-      'Authorization': authHeader
+      Authorization: authHeader
+    };
+  }
+
+  buildSockJsOptions(authHeader) {
+    if (!authHeader) {
+      return undefined;
+    }
+
+    const headers = { Authorization: authHeader };
+
+    return {
+      headers,
+      transportOptions: {
+        'xhr-streaming': { headers },
+        'xhr-polling': { headers },
+        'xdr-streaming': { headers },
+        'xdr-polling': { headers },
+        // eventsource transport is used when available in the browser
+        eventsource: { headers }
+      }
     };
   }
 
