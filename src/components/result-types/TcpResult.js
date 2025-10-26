@@ -1,63 +1,48 @@
+import React from 'react';
 import '../../styles/result-types/TcpResult.css';
-import { getCountryFlag } from '../../utils/FlagHelpers';
 
 const TcpResults = ({ tcp, url }) => {
-  if (!tcp || tcp.length === 0) return null;
+  if (!tcp) return null;
 
-  const getPortFromUrl = (url) => {
-    if (!url) return '443';
-    try {
-      const match = url.match(/:(\d+)/);
-      return match ? match[1] : '443';
-    } catch (error) {
-      return '443';
-    }
-  };
-
-  const port = getPortFromUrl(url);
-  const displayTarget = url ? (url.includes(':') ? url : `${url}:${port}`) : 'unknown:443';
+  // Если tcp - объект, а не массив
+  const tcpData = Array.isArray(tcp) ? tcp : [tcp];
 
   return (
     <div className="tcp-results result-card">
       <div className="result-header">
-        <h4>TCP connect "{displayTarget}"</h4>
+        <h4>TCP Port Check: {url}</h4>
       </div>
-      
-      <div className="tcp-table-container">
-        <table className="tcp-table">
-          <thead>
-            <tr>
-              <th>Location</th>
-              <th>Result</th>
-              <th>Time</th>
-              <th>IP address</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tcp.map((result, index) => (
-              <tr key={index} className="tcp-row">
-                <td className="location-cell">
-                  <span className="country-code">
-                    {getCountryFlag(result.country)}
-                  </span>
-                  {result.location}
-                </td>
-                <td className="result-cell">
-                  <span className="result-badge connected">Connected</span>
-                </td>
-                <td className="time-cell">
-                  {result.connectTime}
-                </td>
-                <td className="ip-cell">
-                  {result.ip || '158.160.46.143'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+
+      {tcpData.map((result, index) => (
+        <div key={index} className="tcp-section">
+          <div className="tcp-table-container">
+            <table className="tcp-table">
+              <tbody>
+                <TcpRow label="Host" value={result.host} />
+                <TcpRow label="Port" value={result.port} />
+                <TcpRow label="Status" value={result.status} />
+                <TcpRow label="Response Time" value={result.responseTime ? `${result.responseTime} ms` : null} />
+                <TcpRow label="Service" value={result.service} />
+                
+                {result.error && (
+                  <TcpRow label="Error" value={result.error} />
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
+
+const TcpRow = ({ label, value }) => (
+  value !== null && value !== undefined ? (
+    <tr>
+      <td className="tcp-label">{label}</td>
+      <td className="tcp-value">{value}</td>
+    </tr>
+  ) : null
+);
 
 export default TcpResults;

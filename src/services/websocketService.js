@@ -10,7 +10,7 @@ class WebSocketService {
   }
 
   connectStomp(onConnect, onError) {
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+    const baseUrl = process.env.REACT_APP_WS_URL || 'http://localhost:8080';
     const socketUrl = `${baseUrl.replace(/\/$/, '')}/ws`;
     const authHeader = getAdminAuthorizationHeader();
 
