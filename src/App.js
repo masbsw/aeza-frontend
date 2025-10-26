@@ -6,6 +6,24 @@ import { webSocketService } from './services/websocketService';
 import { CONFIG } from './constants/config';
 import './styles/App.css';
 
+const parseEnvBoolean = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+};
+
 function App() {
   const [currentTask, setCurrentTask] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -34,23 +52,41 @@ function App() {
     const checkBackendConnection = async () => {
       console.log('Checking backend connection...');
 
-      try {
-        const health = await apiService.healthCheck();
-        if (!health) {
-          throw new Error('Backend health check failed');
+      const mockPreference = parseEnvBoolean(process.env.REACT_APP_USE_MOCK);
+      const connectWebSocket = () => {
+        if (webSocketService.isConnected()) {
+          return;
         }
-
-        await apiService.getAgentMetrics();
-        
-        setBackendAvailable(true);
-        console.log('Backend is fully operational');
 
         webSocketService.connectStomp(
           () => console.log('WebSocket connected'),
           (error) => console.warn('WebSocket connection warning:', error)
         );
+      };
 
+      if (mockPreference === true) {
+        setBackendAvailable(false);
+        console.info('Mock mode forced via REACT_APP_USE_MOCK=TRUE. Using mock data.');
+        return;
+      }
+
+      try {
+        await apiService.getAgentMetrics();
+
+        setBackendAvailable(true);
+        console.log('Backend is fully operational');
+        connectWebSocket();
       } catch (error) {
+        if (mockPreference === false) {
+          setBackendAvailable(true);
+          console.warn(
+            'Backend check failed, but REACT_APP_USE_MOCK=FALSE forces backend usage:',
+            error.message
+          );
+          connectWebSocket();
+          return;
+        }
+
         setBackendAvailable(false);
         console.warn('Backend not available, using mock data:', error.message);
       }
