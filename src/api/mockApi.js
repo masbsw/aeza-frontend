@@ -1,3 +1,58 @@
+const mockApi = {
+  async submitCheck(target, checkType) {
+    console.log(`Mock: Submitting ${checkType} check for ${target}`);
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    return {
+      taskId: `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      target: target,
+      status: 'running',
+      checkType: checkType
+    };
+  },
+
+  async getTaskStatus(taskId, checkType) {
+    console.log(`Mock: Getting status for ${taskId}, type: ${checkType}`);
+    
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    return {
+      taskId: taskId,
+      status: 'completed',
+      progress: 100,
+      results: generateMockResults(checkType)
+    };
+  },
+
+  async getAgentMetrics() {
+    console.log('Mock: Getting agent metrics');
+    
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    return [
+      {
+        agentName: 'de1-agent',
+        metricType: 'AGENT_AVAILABILITY',
+        value: 95.5,
+        timestamp: new Date().toISOString()
+      },
+      {
+        agentName: 'us1-agent', 
+        metricType: 'REQUEST_COUNT',
+        value: 1247,
+        timestamp: new Date().toISOString()
+      },
+      {
+        agentName: 'de1-agent',
+        metricType: 'RESPONSE_DELAY', 
+        value: 23.4,
+        timestamp: new Date().toISOString()
+      }
+    ];
+  }
+};
+
 const generateMockResults = (checkType) => {
   switch (checkType) {
     case 'ping':
@@ -77,3 +132,5 @@ const generateMockResults = (checkType) => {
       return null;
   }
 };
+
+export default mockApi;

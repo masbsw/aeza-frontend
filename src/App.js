@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
+// App.js
+import React, { useState, useEffect, useRef } from 'react';
 import CheckForm from './components/CheckForm';
 import Results from './components/Results';
-import { mockApi } from './api/mockApi';
+import { websocketService } from './services/websocketService';
+import { apiService } from './services/apiService';
+import { CONFIG } from './constants/config';
 import './styles/App.css';
+
+
+
+import { adaptFromCheckHost } from './adapters/CheckHostAdapter';
 
 function App() {
   const [currentTask, setCurrentTask] = useState(null);
@@ -10,99 +17,200 @@ function App() {
   const [targetUrl, setTargetUrl] = useState('');
   const [urlSubmitted, setUrlSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [agentMetrics, setAgentMetrics] = useState([]);
+  
+  const currentTaskRef = useRef();
 
-  const submitUrlToBackend = async (url) => {
-    await new Promise(resolve => setTimeout(resolve, 500));
+useEffect(() => {
+  console.log('DEBUG Current Task:', currentTask);
+  if (currentTask?.results) {
+    console.log('DEBUG Results data:', currentTask.results);
+    console.log('DEBUG Check type:', currentTask.checkType);
+  }
+}, [currentTask]);
+
+  useEffect(() => {
+    currentTaskRef.current = currentTask;
+  }, [currentTask]);
+
+const handleWebSocketUpdate = (update) => {
+  console.log('Received update:', update);
+  
+  const currentTask = currentTaskRef.current;
+  if (!currentTask) return;
+
+  if (update.type === 'agent_metrics') {
+    setAgentMetrics(update.metrics || []);
+    return;
+  }
+
+  let adaptedResults = null;
+  if (update.result) {
+    console.log('Adapting results for:', currentTask.checkType);
+    adaptedResults = adaptFromCheckHost(update.result, currentTask.checkType, currentTask.url);
+    console.log('Adapted results:', adaptedResults);
+  } else if (update.partialResult) {
+    console.log('Adapting partial results for:', currentTask.checkType);
+    adaptedResults = adaptFromCheckHost(update.partialResult, currentTask.checkType, currentTask.url);
+    console.log('Adapted partial results:', adaptedResults);
+  }
+
+
+
+  setCurrentTask(prev => {
+    if (!prev || prev.taskId !== update.jobId) return prev;
+
     return {
-      success: true,
-      target: url,
-      message: 'URL accepted, ready for checks'
+      ...prev,
+      status: update.status || prev.status,
+      progress: update.progress || prev.progress,
+      results: adaptedResults || prev.results
     };
+  });
+
+  if (update.status === 'completed') {
+    console.log('Task completed, loading metrics...');
+    setTimeout(() => {
+      loadAgentMetrics();
+      websocketService.disconnect(update.jobId);
+    }, 1000);
+  }
+};
+
+  const loadAgentMetrics = async () => {
+    try {
+      const metrics = await apiService.getAgentMetrics();
+      setAgentMetrics(metrics);
+    } catch (error) {
+      console.error('Error loading agent metrics:', error);
+    }
   };
 
-  const startCheck = async (checkType) => {
+  const handleCheckStart = async (checkType) => {
+    console.log('Starting check:', checkType);
     setLoading(true);
     setError('');
+
     try {
-      const response = await mockApi.submitCheck(targetUrl, checkType);
-      const newTask = {
-        taskId: response.taskId,
-        url: targetUrl,
-        checkType: checkType,
-        status: 'running',
-        progress: 0,
-        results: null,
-        timestamp: new Date().toLocaleTimeString()
-      };
-      
-      setCurrentTask(newTask);
+      if (checkType === 'info') {
+        await startInfoCheck(checkType);
+      } else {
+        await startNetworkCheck(checkType);
+      }
     } catch (error) {
       console.error('Error starting check:', error);
-      setError(`Ошибка при запуске проверки ${checkType}: ${error.message}`);
+      setError(`Ошибка при запуске проверки: ${error.message}`);
     } finally {
       setLoading(false);
     }
+  };
+
+
+const startNetworkCheck = async (checkType) => {
+  try {
+    const task = await apiService.submitCheck(targetUrl, checkType);
+    
+    console.log('Task created:', task);
+    
+    setCurrentTask({
+      taskId: task.taskId,
+      url: targetUrl,
+      checkType: checkType,
+      status: 'running',
+      progress: 50,
+      results: null,
+      timestamp: new Date().toLocaleTimeString()
+    });
+
+    await websocketService.connect(task.taskId, checkType, targetUrl);
+    websocketService.subscribe(task.taskId, handleWebSocketUpdate);
+    console.log('Mock WebSocket connected');
+
+  } catch (error) {
+    console.error('Error starting check:', error);
+    setError('Ошибка при запуске проверки');
+  }
+};
+  const startInfoCheck = async (checkType) => {
+    const loadingTask = {
+      taskId: `info-loading-${Date.now()}`,
+      url: targetUrl,
+      checkType: 'info',
+      status: 'running',
+      progress: 50,
+      results: null,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    
+    setCurrentTask(loadingTask);
+    
+    setTimeout(() => {
+      const completedTask = {
+        ...loadingTask,
+        status: 'completed',
+        progress: 100,
+        results: { 
+          info: {
+            ip: '158.160.46.143',
+            hostname: targetUrl.replace(/^https?:\/\//, ''),
+            country: 'Russia',
+            region: 'Moscow',
+            timezone: 'Europe/Moscow',
+          }
+        }
+      };
+      setCurrentTask(completedTask);
+      loadAgentMetrics();
+    }, 2000);
   };
 
   const handleUrlSubmit = async (url) => {
     setLoading(true);
     setError('');
     try {
-      await submitUrlToBackend(url);
       setTargetUrl(url);
       setUrlSubmitted(true);
       setCurrentTask(null);
     } catch (error) {
-      console.error('Error submitting URL:', error);
-      setError('Ошибка при отправке URL: ' + error.message);
+      setError('Ошибка при обработке URL: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleReset = () => {
-    setUrlSubmitted(false);
-    setTargetUrl('');
-    setCurrentTask(null);
-    setError('');
-  };
+const handleReset = () => {
+  if (currentTask) {
+    console.log('Resetting, disconnecting from:', currentTask.taskId);
+    websocketService.disconnect(currentTask.taskId);
+  }
+  setUrlSubmitted(false);
+  setTargetUrl('');
+  setCurrentTask(null);
+  setError('');
+  setAgentMetrics([]);
+};
+
 
   useEffect(() => {
-    if (currentTask && currentTask.status === 'running') {
-      const interval = setInterval(async () => {
-        try {
-          const status = await mockApi.getTaskStatus(currentTask.taskId, currentTask.checkType);
-          const updatedTask = { ...currentTask, ...status };
-          
-          setCurrentTask(updatedTask);
-          
-          if (status.status !== 'running') {
-            clearInterval(interval);
-          }
-        } catch (error) {
-          console.error('Error fetching task status:', error);
-          setError('Ошибка при получении статуса проверки');
-          clearInterval(interval);
-        }
-      }, 1500);
-
-      return () => clearInterval(interval);
-    }
+    return () => {
+      if (currentTask) {
+        websocketService.disconnect(currentTask.taskId);
+      }
+    };
   }, [currentTask]);
+
+  
 
   return (
     <div className="app">
       <div className="container">
-        {error && (
-          <div className="error-message">
-             {error}
-          </div>
-        )}
 
+        {error && <div className="error-message">{error}</div>}
+        
         <main className="app-main">
           <CheckForm 
             onSubmit={handleUrlSubmit}
-            onCheckStart={startCheck}
+            onCheckStart={handleCheckStart}
             onReset={handleReset}
             loading={loading}
             urlSubmitted={urlSubmitted}
@@ -110,7 +218,12 @@ function App() {
             currentTask={currentTask}
           />
           
-          {currentTask && <Results {...currentTask} />}
+          {currentTask && (
+            <Results 
+              {...currentTask} 
+              agentMetrics={agentMetrics}
+            />
+          )}
         </main>
       </div>
     </div>

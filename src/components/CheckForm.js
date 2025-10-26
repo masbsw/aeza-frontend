@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import '../styles/CheckForm.css';
 import { isValidUrl, normalizeInput, getInputType, extractPort, extractHost } from '../utils/validation';
+import { apiService } from '../services/apiService';
 
 const CheckForm = ({ 
   onSubmit, 
@@ -13,6 +14,7 @@ const CheckForm = ({
 }) => {
   const [url, setUrl] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [localLoading, setLocalLoading] = useState(false);
 
   const handleUrlChange = (e) => {
     const value = e.target.value;
@@ -50,8 +52,19 @@ const CheckForm = ({
     onSubmit(normalizedUrl);
   };
 
-  const handleCheckTypeClick = (checkType) => {
-    onCheckStart(checkType);
+  const handleCheckTypeClick = async (checkType) => {
+    console.log('Check type clicked:', checkType);
+    
+    try {
+      setLocalLoading(true);
+      
+      onCheckStart(checkType);
+      
+    } catch (error) {
+      console.error('Error starting check:', error);
+    } finally {
+      setLocalLoading(false);
+    }
   };
 
   const handleResetClick = () => {
@@ -60,16 +73,15 @@ const CheckForm = ({
     onReset();
   };
 
+  const isLoading = loading || localLoading;
+
   const checkButtons = [
     { type: 'info', label: 'Info' },
     { type: 'ping', label: 'Ping'},
     { type: 'http', label: 'HTTP'},
     { type: 'dns', label: 'DNS' },
     { type: 'tcp', label: 'TCP Port'}
-    
   ];
-
-
 
   return (
     <div className="check-form">
@@ -86,31 +98,28 @@ const CheckForm = ({
               placeholder="example.com / 192.168.1.1 / 8.8.8.8:53"
               value={urlSubmitted ? targetUrl : url}
               onChange={handleUrlChange}
-              disabled={loading || urlSubmitted}
+              disabled={isLoading || urlSubmitted}
               className={`url-input ${validationError ? 'error' : ''}`}
             />
             {!urlSubmitted ? (
               <button 
                 type="submit"
-                disabled={loading || !url.trim()}
+                disabled={isLoading || !url.trim()}
                 className="submit-btn"
               >
-                {loading ? (
+                {isLoading ? (
                   <>
                     <span className="spinner"></span>
                     Отправка...
                   </>
                 ) : 'Отправить'}
-
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"></path>
-                  </svg>
               </button>
             ) : (
               <button 
                 type="button"
                 onClick={handleResetClick}
                 className="reset-btn"
+                disabled={isLoading}
               >
                 ✕ Сброс
               </button>
@@ -136,25 +145,17 @@ const CheckForm = ({
                   key={button.type}
                   type="button"
                   onClick={() => handleCheckTypeClick(button.type)}
-                  disabled={loading || (currentTask && currentTask.status === 'running')}
+                  disabled={isLoading || (currentTask && currentTask.status === 'running')}
                   className="check-button"
-                  title={button.description}
                   data-type={button.type}
                 >
-                  <span className="button-icon">{button.label.split(' ')[0]}</span>
-                  <span className="button-description">{button.description}</span>
-                   <div className="button-border"></div>
+                  <span className="button-text">{button.label}</span>
+                  <div className="button-border"></div>
                 </button>
               ))}
             </div>
 
-            {currentTask && currentTask.status === 'running' && (
-              <div className="check-in-progress">
-                <div className="progress-info">
-                  <span className="spinner small"></span>
-                </div>
-              </div>
-            )}
+            
           </div>
         )}
       </div>

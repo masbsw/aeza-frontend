@@ -4,8 +4,9 @@ import HttpResults from './result-types/HttpResult';
 import DnsResults from './result-types/DnsResult';
 import TcpResults from './result-types/TcpResult';
 import '../styles/Results.css';
+import AgentMetrics from './AgentMetrics';
 
-const Results = ({ taskId, status, progress, results, url, checkType }) => {
+const Results = ({ taskId, status, progress, results, url, checkType,  agentMetrics}) => {
   // if (!taskId) return null;
 
   const renderResults = () => {
@@ -57,6 +58,10 @@ const Results = ({ taskId, status, progress, results, url, checkType }) => {
       <div className="check-results">
         {renderResults()}
       </div>
+
+      {status === 'completed' && agentMetrics && agentMetrics.length > 0 && (
+        <AgentMetrics metrics={agentMetrics} />
+      )}
     </div>
   );
 };
