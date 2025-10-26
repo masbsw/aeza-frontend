@@ -1,6 +1,6 @@
 export const CONFIG = {
   API: {
-    BASE_URL: process.env.REACT_APP_API_URL || 'http://138.124.14.169:8080/api',
+    BASE_URL: process.env.REACT_APP_API_URL || 'http://138.124.14.169:8080',
   },
   CHECK_TYPES: {
     HTTP: 'HTTP',
@@ -17,6 +17,6 @@ export const API_ENDPOINTS = {
     STATUS: '/checks/:jobId',
   },
   METRICS: {
-    AGENTS: '/metrics/agents'
+    AGENTS: '/metrics/agents/{id}'
   }
 };

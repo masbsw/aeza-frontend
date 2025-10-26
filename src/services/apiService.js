@@ -3,7 +3,7 @@ import { withBasicAuth } from '../utils/auth';
 
 class ApiService {
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://138.124.14.169:8080/api';
+    this.baseURL = process.env.REACT_APP_API_URL || 'http://138.124.14.169:8080';
   }
 
   async request(endpoint, options = {}) {
@@ -26,7 +26,7 @@ class ApiService {
 
     try {
       const response = await fetch(url, config);
-      console.log(`📨 API Response: ${response.status}`, response);
+      console.log(`API Response: ${response.status}`, response);
 
       if (response.status === 401) {
         throw new Error('Authentication failed: Invalid admin credentials');
@@ -67,7 +67,7 @@ class ApiService {
   }
 
   async getAgentMetrics() {
-    return await this.request(API_ENDPOINTS.METRICS.AGENTS);
+   return await this.request('/api/metrics/agents');
   }
 }
 
