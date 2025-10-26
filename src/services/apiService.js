@@ -1,6 +1,7 @@
 // services/apiService.js
 import { CONFIG } from '../constants/config';
 import { adaptFromCheckHost } from '../adapters/CheckHostAdapter';
+import { withBasicAuth } from '../utils/auth';
 
 class ApiService {
   constructor() {
@@ -9,20 +10,20 @@ class ApiService {
   }
 
   async submitCheck(target, checkType) {
-    console.log(`🔄 Submitting ${checkType} check for ${target}`);
+    console.log(`Submitting ${checkType} check for ${target}`);
     
     if (CONFIG.USE_MOCK) {
-      console.log('🔧 Using mock data (backend not ready)');
+      console.log('Using mock data (backend not ready)');
       const mockApi = await import('../api/mockApi');
       return mockApi.default.submitCheck(target, checkType);
     } else {
             try {
         const response = await fetch(`${this.baseURL}/checks`, {
           method: 'POST',
-          headers: { 
+          headers: withBasicAuth({
             'Content-Type': 'application/json',
             'Accept': 'application/json'
-          },
+          }),
           body: JSON.stringify({
             target: target,
             checkType: checkType
@@ -57,7 +58,11 @@ class ApiService {
       return mockApi.default.getTaskStatus(taskId, checkType);
     } else {
 try {
-        const response = await fetch(`${this.baseURL}/checks/${taskId}`);
+        const response = await fetch(`${this.baseURL}/checks/${taskId}`, {
+          headers: withBasicAuth({
+            'Accept': 'application/json'
+          })
+        });
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -87,19 +92,23 @@ try {
     } else {
       try {
         // РЕАЛЬНЫЕ МЕТРИКИ - уточнить endpoint
-        const response = await fetch(`${this.baseURL}/agent/123`); 
+        const response = await fetch(`${this.baseURL}/agent/123`, {
+          headers: withBasicAuth({
+            'Accept': 'application/json'
+          })
+        }); 
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const data = await response.json();
-        console.log('✅ Real agent metrics:', data);
+        console.log('Real agent metrics:', data);
         
         return this.adaptRealMetrics(data);
         
       } catch (error) {
-        console.error('❌ Backend metrics error, using mock:', error);
+        console.error('Backend metrics error, using mock:', error);
         const mockApi = await import('../api/mockApi');
         return mockApi.default.getAgentMetrics();
       }

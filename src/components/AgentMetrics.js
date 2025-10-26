@@ -1,3 +1,5 @@
+import "../styles/AgentMetrics.css"
+
 const AgentMetrics = ({ metrics }) => {
   if (!metrics || metrics.length === 0) return null;
 
