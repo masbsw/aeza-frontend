@@ -2,27 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CheckForm from './components/CheckForm';
 import Results from './components/Results';
 import { apiService } from './services/apiService';
-import { webSocketService } from './services/websocketService';
-import { CONFIG } from './constants/config';
 import './styles/App.css';
 
-const parseEnvBoolean = (value) => {
-  if (value === undefined || value === null) {
-    return null;
-  }
-
-  const normalized = String(value).trim().toLowerCase();
-
-  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) {
-    return true;
-  }
-
-  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) {
-    return false;
-  }
-
-  return null;
-};
+const POLLING_INTERVAL = 2000;
 
 function App() {
   const [currentTask, setCurrentTask] = useState(null);
@@ -31,10 +13,9 @@ function App() {
   const [urlSubmitted, setUrlSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [agentMetrics, setAgentMetrics] = useState([]);
-  const [backendAvailable, setBackendAvailable] = useState(false);
-  
-  const currentTaskRef = useRef();
-  const jobIdRef = useRef();
+  const [backendReady, setBackendReady] = useState(false);
+
+  const pollingIntervalRef = useRef(null);
 
   useEffect(() => {
     console.log('DEBUG Current Task:', currentTask);
@@ -44,66 +25,98 @@ function App() {
     }
   }, [currentTask]);
 
-  useEffect(() => {
-    currentTaskRef.current = currentTask;
-  }, [currentTask]);
-
-  useEffect(() => {
-    const checkBackendConnection = async () => {
-      console.log('Checking backend connection...');
-
-      const mockPreference = parseEnvBoolean(process.env.REACT_APP_USE_MOCK);
-      const connectWebSocket = () => {
-        if (webSocketService.isConnected()) {
-          return;
-        }
-
-        webSocketService.connectStomp(
-          () => console.log('WebSocket connected'),
-          (error) => console.warn('WebSocket connection warning:', error)
-        );
-      };
-
-      if (mockPreference === true) {
-        setBackendAvailable(false);
-        console.info('Mock mode forced via REACT_APP_USE_MOCK=TRUE. Using mock data.');
-        return;
-      }
-
-      try {
-        await apiService.getAgentMetrics();
-
-        setBackendAvailable(true);
-        console.log('Backend is fully operational');
-        connectWebSocket();
-      } catch (error) {
-        if (mockPreference === false) {
-          setBackendAvailable(true);
-          console.warn(
-            'Backend check failed, but REACT_APP_USE_MOCK=FALSE forces backend usage:',
-            error.message
-          );
-          connectWebSocket();
-          return;
-        }
-
-        setBackendAvailable(false);
-        console.warn('Backend not available, using mock data:', error.message);
-      }
-    };
-
-    checkBackendConnection();
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
   }, []);
 
-  const loadAgentMetrics = async () => {
+  const refreshAgentMetrics = useCallback(async () => {
     try {
       const metrics = await apiService.getAgentMetrics();
       setAgentMetrics(metrics);
-    } catch (error) {
-      console.log('Using mock agent metrics');
-      setAgentMetrics(getMockAgentMetrics());
+    } catch (metricsError) {
+      console.error('Failed to load agent metrics:', metricsError);
     }
-  };
+  }, []);
+
+  const handleStatusUpdate = useCallback((statusPayload) => {
+    if (!statusPayload) {
+      return;
+    }
+
+    const statusValue = statusPayload.status || statusPayload.state;
+    const resultPayload = statusPayload.result || statusPayload.data?.result || statusPayload.data;
+
+    setCurrentTask((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const update = { ...prev };
+
+      if (statusValue) {
+        update.status = statusValue.toString().toLowerCase();
+        update.progress = getProgressFromStatus(statusValue);
+      }
+
+      if (resultPayload) {
+        update.results = resultPayload;
+      }
+
+      if (statusValue && ['COMPLETED', 'FAILED'].includes(statusValue)) {
+        update.progress = 100;
+        update.completedAt = new Date().toLocaleTimeString();
+      }
+
+      return update;
+    });
+
+    if (statusValue && ['COMPLETED', 'FAILED'].includes(statusValue)) {
+      stopPolling();
+      if (statusValue === 'COMPLETED') {
+        refreshAgentMetrics();
+      }
+    }
+  }, [refreshAgentMetrics, stopPolling]);
+
+  const startStatusPolling = useCallback((jobId) => {
+    const poll = async () => {
+      try {
+        const status = await apiService.getTaskStatus(jobId);
+        handleStatusUpdate(status);
+      } catch (pollError) {
+        console.error('Failed to poll job status:', pollError);
+      }
+    };
+
+    stopPolling();
+    poll();
+    pollingIntervalRef.current = setInterval(poll, POLLING_INTERVAL);
+  }, [handleStatusUpdate, stopPolling]);
+
+  useEffect(() => {
+    const initializeBackend = async () => {
+      console.log('Checking backend connection...');
+
+      try {
+        const metrics = await apiService.getAgentMetrics();
+        setAgentMetrics(metrics);
+        setBackendReady(true);
+        console.log('Backend is fully operational');
+      } catch (initError) {
+        console.error('Failed to connect to backend:', initError);
+        setError('Не удалось подключиться к бэкенду: ' + initError.message);
+      }
+    };
+
+    initializeBackend();
+
+    return () => {
+      stopPolling();
+    };
+  }, [stopPolling]);
 
   const handleCheckStart = async (checkType) => {
     console.log('Starting check:', checkType);
@@ -111,16 +124,14 @@ function App() {
     setError('');
 
     try {
-      if (backendAvailable) {
-        console.log('Using real backend');
-        await startBackendCheck(checkType);
-      } else {
-        console.log('Using mock data');
-        await startMockCheck(checkType);
+      if (!backendReady) {
+        throw new Error('Бэкенд не готов к выполнению проверок');
       }
-    } catch (error) {
-      console.error('Error in check:', error);
-      await startMockCheck(checkType);
+
+      await startBackendCheck(checkType);
+    } catch (checkError) {
+      console.error('Error in check:', checkError);
+      setError('Не удалось выполнить проверку: ' + checkError.message);
     } finally {
       setLoading(false);
     }
@@ -128,11 +139,12 @@ function App() {
 
   const startBackendCheck = async (checkType) => {
     try {
+      stopPolling();
+
       const checkTypes = mapCheckTypeToBackend(checkType);
       const task = await apiService.submitCheck(targetUrl, checkTypes);
-      
+
       console.log('Backend task created:', task);
-      jobIdRef.current = task.jobId;
 
       const loadingTask = {
         taskId: task.jobId,
@@ -143,44 +155,13 @@ function App() {
         results: null,
         timestamp: new Date().toLocaleTimeString()
       };
-      
+
       setCurrentTask(loadingTask);
-
-      if (webSocketService.isConnected()) {
-        webSocketService.subscribeToJob(task.jobId, handleWebSocketMessage);
-      }
-
+      startStatusPolling(task.jobId);
     } catch (error) {
-      console.error('Backend check failed, falling back to mock:', error);
+      console.error('Backend check failed:', error);
       throw error;
     }
-  };
-
-  const startMockCheck = async (checkType) => {
-    console.log('Using mock data for:', checkType);
-    
-    const loadingTask = {
-      taskId: `mock-${Date.now()}`,
-      url: targetUrl,
-      checkType: checkType,
-      status: 'running',
-      progress: 50,
-      results: null,
-      timestamp: new Date().toLocaleTimeString()
-    };
-    
-    setCurrentTask(loadingTask);
-
-    setTimeout(() => {
-      const completedTask = {
-        ...loadingTask,
-        status: 'completed',
-        progress: 100,
-        results: getMockResults(checkType, targetUrl)
-      };
-      setCurrentTask(completedTask);
-      setAgentMetrics(getMockAgentMetrics());
-    }, 1500);
   };
 
   const mapCheckTypeToBackend = (checkType) => {
@@ -191,62 +172,20 @@ function App() {
       'dns': ['DNS_LOOKUP'],
       'tcp': ['TCP']
     };
-    
+
     return typeMap[checkType] || ['HTTP'];
   };
 
-  const handleWebSocketMessage = useCallback((payload) => {
-    console.log('WebSocket message received:', payload);
-    
-    setCurrentTask(prev => {
-      if (!prev) return prev;
-
-      const update = { ...prev };
-      
-      switch (payload.type) {
-        case 'JOB_CREATED':
-          update.status = 'pending';
-          update.progress = 30;
-          break;
-          
-        case 'JOB_UPDATED':
-          update.status = payload.status.toLowerCase();
-          update.progress = getProgressFromStatus(payload.status);
-          break;
-          
-        case 'JOB_COMPLETED':
-          update.status = 'completed';
-          update.progress = 100;
-          update.results = payload.data?.result || payload.data;
-          update.completedAt = new Date().toLocaleTimeString();
-          break;
-          
-        default:
-          break;
-      }
-      
-      return update;
-    });
-
-    if (payload.type === 'JOB_COMPLETED' || payload.status === 'FAILED') {
-      setTimeout(() => {
-        if (jobIdRef.current) {
-          webSocketService.unsubscribeFromJob(jobIdRef.current);
-          jobIdRef.current = null;
-        }
-      }, 3000);
-    }
-  }, []);
-
   const getProgressFromStatus = (status) => {
+    const normalizedStatus = status ? status.toString().toUpperCase() : '';
     const progressMap = {
       'PENDING': 30,
       'IN_PROGRESS': 60,
       'COMPLETED': 100,
       'FAILED': 100
     };
-    
-    return progressMap[status] || 40;
+
+    return progressMap[normalizedStatus] || 40;
   };
 
   const handleUrlSubmit = async (url) => {
@@ -256,8 +195,8 @@ function App() {
       setTargetUrl(url);
       setUrlSubmitted(true);
       setCurrentTask(null);
-    } catch (error) {
-      setError('Ошибка при обработке URL: ' + error.message);
+    } catch (urlError) {
+      setError('Ошибка при обработке URL: ' + urlError.message);
     } finally {
       setLoading(false);
     }
@@ -269,20 +208,16 @@ function App() {
     setCurrentTask(null);
     setError('');
     setAgentMetrics([]);
-    
-    if (jobIdRef.current) {
-      webSocketService.unsubscribeFromJob(jobIdRef.current);
-      jobIdRef.current = null;
-    }
+    stopPolling();
   };
 
   return (
     <div className="app">
       <div className="container">
         {error && <div className="error-message">{error}</div>}
-        
+
         <main className="app-main">
-          <CheckForm 
+          <CheckForm
             onSubmit={handleUrlSubmit}
             onCheckStart={handleCheckStart}
             onReset={handleReset}
@@ -291,10 +226,10 @@ function App() {
             targetUrl={targetUrl}
             currentTask={currentTask}
           />
-          
+
           {currentTask && (
-            <Results 
-              {...currentTask} 
+            <Results
+              {...currentTask}
               agentMetrics={agentMetrics}
             />
           )}
@@ -303,106 +238,5 @@ function App() {
     </div>
   );
 }
-
-const getMockResults = (checkType, targetUrl) => {
-  const hostname = targetUrl.replace(/^https?:\/\//, '').split('/')[0];
-  
-  const mockData = {
-    info: {
-      ip: '93.184.216.34',
-      hostname: hostname,
-      country: 'United States',
-      countryCode: 'US',
-      region: 'Massachusetts',
-      city: 'Boston',
-      postalCode: '02101',
-      latitude: 42.3584,
-      longitude: -71.0598,
-      timezone: 'America/New_York',
-      localTime: new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }),
-      asn: 'AS15133',
-      isp: 'Google LLC',
-      organization: 'Google Cloud',
-      currency: 'USD',
-      languages: 'en',
-      continent: 'North America',
-      sources: [
-        {
-          name: 'IPGeolocation.io',
-          date: new Date().toLocaleDateString('en-GB'),
-          ipRange: '93.184.216.0-93.184.216.255 CIDR',
-          city: 'Boston',
-          postalCode: '02101',
-          accuracy: 'High'
-        }
-      ]
-    },
-    ping: {
-      target: hostname,
-      packetsTransmitted: 4,
-      packetsReceived: 4,
-      packetLoss: 0,
-      min: 12.5,
-      avg: 15.2,
-      max: 18.7,
-      stddev: 2.1
-    },
-    http: {
-      url: targetUrl,
-      statusCode: 200,
-      statusMessage: 'OK',
-      responseTime: 245,
-      headers: {
-        'content-type': 'text/html; charset=utf-8',
-        'server': 'nginx',
-        'x-powered-by': 'Express'
-      },
-      ssl: {
-        valid: true,
-        expires: '2024-12-31T23:59:59.000Z'
-      }
-    },
-    dns: {
-      hostname: hostname,
-      records: {
-        A: ['93.184.216.34'],
-        AAAA: ['2606:2800:220:1:248:1893:25c8:1946'],
-        NS: ['ns1.example.com', 'ns2.example.com'],
-        MX: ['10 mail.example.com']
-      },
-      queryTime: 45
-    },
-    tcp: {
-      host: hostname,
-      port: 80,
-      status: 'open',
-      responseTime: 12.3,
-      service: 'http'
-    }
-  };
-
-  return { [checkType]: mockData[checkType] || mockData.info };
-};
-
-const getMockAgentMetrics = () => {
-  return [
-    {
-      id: 'agent-1',
-      name: 'US East Agent',
-      status: 'online',
-      location: 'New York, US',
-      checksCompleted: 1245,
-      avgResponseTime: 45.2
-    },
-    {
-      id: 'agent-2', 
-      name: 'EU Central Agent',
-      status: 'online',
-      location: 'Frankfurt, DE',
-      checksCompleted: 987,
-      avgResponseTime: 32.1
-    }
-  ];
-};
 
 export default App;

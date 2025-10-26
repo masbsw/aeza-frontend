@@ -1,4 +1,3 @@
-import { websocketService } from "./websocketService";
 import { adaptFromCheckHost } from '../adapters/CheckHostAdapter';
 
 export const adaptWebSocketData = (wsData, checkType) => {

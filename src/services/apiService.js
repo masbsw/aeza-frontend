@@ -3,7 +3,7 @@ import { withBasicAuth } from '../utils/auth';
 
 class ApiService {
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://138.124.14.169:8080';
+    this.baseURL = process.env.REACT_APP_API_URL || 'http://138.124.14.169:8080/api';
   }
 
   async request(endpoint, options = {}) {
